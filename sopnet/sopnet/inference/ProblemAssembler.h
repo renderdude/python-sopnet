@@ -5,6 +5,7 @@
 #include <inference/LinearConstraints.h>
 #include <sopnet/features/Overlap.h>
 #include <sopnet/segments/Segments.h>
+#include <sopnet/inference/UserConstraints.h>
 #include "ProblemConfiguration.h"
 
 class ProblemAssembler : public pipeline::SimpleProcessNode<> {
@@ -26,6 +27,8 @@ private:
 	void addMitochondriaConstraints();
 
 	void addSynapseConstraints();
+
+	void addUserConstraints();
 
 	void mapConstraints(boost::shared_ptr<LinearConstraints> linearConstraints);
 
@@ -81,6 +84,9 @@ private:
 
 	// synapse linear constraints on the segments for each pair of frames
 	pipeline::Inputs<LinearConstraints> _synapseLinearConstraints;
+
+	// sets of user-specified segments in the solution
+	pipeline::Input<UserConstraints>	_userConstraintSets;
 
 	// all segments in the problem
 	pipeline::Output<Segments>          _allSegments;

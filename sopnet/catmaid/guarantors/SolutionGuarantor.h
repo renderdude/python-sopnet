@@ -8,6 +8,7 @@
 #include <catmaid/persistence/SegmentStore.h>
 #include <catmaid/persistence/SliceStore.h>
 #include <catmaid/persistence/StackStore.h>
+#include <catmaid/persistence/UserConstraintStore.h>
 #include <inference/PriorCostFunctionParameters.h>
 #include <inference/ProblemAssembler.h>
 #include <inference/SegmentationCostFunctionParameters.h>
@@ -28,6 +29,7 @@ public:
 	 *   SliceStore                  "slice store"
 	 *   StackStore                  "raw stack store"
 	 *   StackStore                  "membrane stack store"
+	 *   UserConstraintStore         "user constraint store"
 	 *   bool                        "force explanation"
 	 *   unsigned int                "buffer"
 	 * Outputs:
@@ -96,6 +98,7 @@ private:
 	pipeline::Input<SliceStore> _sliceStore;
 	pipeline::Input<StackStore> _rawImageStore;
 	pipeline::Input<StackStore> _membraneStore;
+	pipeline::Input<UserConstraintStore> _userConstraintStore;
 	pipeline::Input<bool> _forceExplanation;
 	pipeline::Input<unsigned int> _buffer;
 	

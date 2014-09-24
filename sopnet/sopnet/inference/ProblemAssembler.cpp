@@ -46,6 +46,7 @@ ProblemAssembler::ProblemAssembler() :
 	registerInputs(_mitochondriaLinearConstraints, "mitochondria linear constraints");
 	registerInputs(_synapseSegments, "synapse segments");
 	registerInputs(_synapseLinearConstraints, "synapse linear constraints");
+	registerInput(_userConstraintSets, "user constraints");
 
 	registerOutput(_allSegments, "segments");
 	registerOutput(_allNeuronSegments, "neuron segments");
@@ -71,6 +72,9 @@ ProblemAssembler::updateOutputs() {
 
 	// make sure synapses are enclosed by a single neuron
 	addSynapseConstraints();
+
+	// make sure segments selected by users are used
+	addUserConstraints();
 }
 
 void
@@ -271,6 +275,29 @@ ProblemAssembler::addSynapseConstraints() {
 	LOG_DEBUG(problemassemblerlog) << "created " << _synapseConstraints.size() << " linear constraints" << std::endl;
 
 	_allLinearConstraints->addAll(_synapseConstraints);
+}
+
+void
+ProblemAssembler::addUserConstraints() {
+
+	LOG_DEBUG(problemassemblerlog) << "adding user constraints..." << std::endl;
+
+	LOG_ALL(problemassemblerlog) << "got " << _userConstraintSets.get()->size() << " user constraint segment sets" << std::endl;
+
+	foreach (const UserConstraints::value_type &segmentSet, *_userConstraintSets) {
+
+		LOG_DEBUG(problemassemblerlog) << "processing user constraint " << segmentSet.first << std::endl;
+
+		boost::shared_ptr<LinearConstraint> constraint = boost::make_shared<LinearConstraint>();
+
+		foreach (const unsigned int segmentId, segmentSet.second) {
+			constraint->setCoefficient(segmentId, 1.0);
+		}
+
+		constraint->setRelation(GreaterEqual);
+		constraint->setValue(1);
+		_allLinearConstraints->add(*constraint);
+	}
 }
 
 void

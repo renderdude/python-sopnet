@@ -20,6 +20,7 @@ SolutionGuarantor::fill(
 	boost::shared_ptr<SliceStore>    sliceStore    = createSliceStore(configuration);
 	boost::shared_ptr<SegmentStore>  segmentStore  = createSegmentStore(configuration);
 	//boost::shared_ptr<SolutionStore> solutionStore = createSolutionStore(configuration);
+	boost::shared_ptr<UserConstraintStore> userConstraintStore = createUserConstraintStore(configuration);
 
 	LOG_USER(pylog) << "[SolutionGuarantor] requesting block at " << request << std::endl;
 
@@ -40,6 +41,7 @@ SolutionGuarantor::fill(
 	solutionGuarantor->setInput("segment store", segmentStore);
 	solutionGuarantor->setInput("slice store", sliceStore);
 	solutionGuarantor->setInput("raw stack store", rawStackStore);
+	solutionGuarantor->setInput("user constraint store", userConstraintStore);
 	solutionGuarantor->setInput("force explanation", forceExplanation);
 	solutionGuarantor->setInput("buffer", corePadding);
 

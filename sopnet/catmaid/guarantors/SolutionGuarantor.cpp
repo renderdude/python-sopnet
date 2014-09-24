@@ -58,6 +58,7 @@ SolutionGuarantor::SolutionGuarantor()
 	registerInput(_sliceStore, "slice store");
 	registerInput(_rawImageStore, "raw stack store");
 	registerInput(_membraneStore, "membrane stack store");
+	registerInput(_userConstraintStore, "user constraint store");
 	registerInput(_forceExplanation, "force explanation");
 	registerInput(_buffer, "buffer");
 	
@@ -290,6 +291,8 @@ SolutionGuarantor::solve()
 	boost::shared_ptr<Slices>       slices       = _sliceStore->retrieveSlices(*_bufferedBlocks);
 	boost::shared_ptr<ConflictSets> conflictSets = _sliceStore->retrieveConflictSets(*slices);
 	boost::shared_ptr<Segments>     segments     = _segmentStore->retrieveSegments(*_bufferedBlocks);
+	pipeline::Value<UserConstraints> userConstraintSets =
+		_userConstraintStore->retrieveUserConstraints(*_bufferedBlocks);
 
 	endExtractor->setInput("slices", slices);
 	endExtractor->setInput("segments", segments);
@@ -300,6 +303,7 @@ SolutionGuarantor::solve()
 	
 	problemAssembler->addInput("neuron segments", endExtractor->getOutput("segments"));
 	problemAssembler->addInput("neuron linear constraints", constraintAssembler->getOutput("linear constraints"));
+	problemAssembler->setInput("user constraints", userConstraintSets);
 
 	objectiveAssembler->setInput("segment store", _segmentStore);
 	objectiveAssembler->setInput("segments", endExtractor->getOutput("segments"));

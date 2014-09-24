@@ -1,4 +1,5 @@
 #include <catmaid/persistence/django/DjangoSegmentStore.h>
+#include <catmaid/persistence/django/DjangoUserConstraintStore.h>
 #include <catmaid/persistence/django/CatmaidStackStore.h>
 #include <catmaid/persistence/local/LocalBlockManager.h>
 #include <catmaid/persistence/local/LocalStackStore.h>
@@ -137,5 +138,21 @@ BackendClient::createSegmentStore(const ProjectConfiguration& configuration) {
 // 
 // 	UTIL_THROW_EXCEPTION(UsageError, "unknown backend type " << configuration.getBackendType());
 // }
+
+boost::shared_ptr<UserConstraintStore>
+BackendClient::createUserConstraintStore(const ProjectConfiguration& configuration) {
+
+	if (configuration.getBackendType() == ProjectConfiguration::Django) {
+
+		LOG_USER(pylog) << "[BackendClient] create django user constraint store" << std::endl;
+
+		if (!_djangoBlockManager)
+			createBlockManager(configuration);
+
+		return boost::make_shared<DjangoUserConstraintStore>(_djangoBlockManager);
+	}
+
+	UTIL_THROW_EXCEPTION(UsageError, "unknown backend type " << configuration.getBackendType());
+}
 
 } // namespace python
