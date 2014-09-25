@@ -47,13 +47,13 @@ DjangoUserConstraintStore::retrieveUserConstraints(const Blocks& blocks)
 	foreach (ptree::value_type constraintV, constraintsTree)
 	{
 		std::vector<unsigned int> segmentIds = std::vector<unsigned int>();
-		foreach (ptree::value_type segment, constraintV.second)
+		foreach (ptree::value_type segment, constraintV.second.get_child("segment_ids"))
 		{
 			segmentIds.push_back(segment.second.get_value<unsigned int>());
 		}
 		userConstraintSets->insert(UserConstraints::value_type(
-									static_cast<unsigned int>(std::strtoul(constraintV.first.c_str(), NULL, 10)),
-									segmentIds));
+				constraintV.second.get<unsigned int>("constraint_id"),
+				segmentIds));
 	}
 
 	return userConstraintSets;
