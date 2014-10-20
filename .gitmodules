@@ -1,6 +1,3 @@
-[submodule "modules/util"]
-	path = modules/util
-	url = https://github.com/funkey/util.git
 [submodule "modules/signals"]
 	path = modules/signals
 	url = https://github.com/funkey/signals.git
@@ -13,3 +10,6 @@
 [submodule "cmake"]
 	path = cmake
 	url = https://github.com/funkey/cmake
+[submodule "modules/util"]
+	path = modules/util
+	url = https://renderdude@github.com/renderdude/util.git
