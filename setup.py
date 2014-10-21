@@ -14,13 +14,13 @@ class cmake_lib(build_py):
         module_name = "pysopnet"
         lib_name    = "pysopnet/lib" + module_name + ".so"
         source_dir  = os.path.abspath(".")
-        build_dir   = os.path.join(source_dir, "build-pysopnet")
+        build_dir   = os.path.join(os.getenv('BUILD_DIR', source_dir), "build-pysopnet")
         lib_file    = os.path.join(build_dir, lib_name)
 
         if not self.dry_run:
 
             # create our shared object file
-            call(["./compile_wrapper.sh", source_dir, build_dir, module_name, "-j9"])
+            call(["./compile_wrapper.sh", source_dir, build_dir, module_name, "-j4"])
 
             target_dir = self.build_lib
 
