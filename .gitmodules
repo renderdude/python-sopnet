@@ -6,7 +6,7 @@
 	url = https://github.com/funkey/pipeline.git
 [submodule "modules/imageprocessing"]
 	path = modules/imageprocessing
-	url = https://github.com/larrylindsey/imageprocessing.git
+url=https://github.com/renderdude/imageprocessing.git
 [submodule "cmake"]
 	path = cmake
 	url = https://github.com/funkey/cmake
