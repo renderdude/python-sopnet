@@ -41,24 +41,19 @@ PostgreSqlSliceStore::associateSlicesToBlock(const Slices& slices, const Block& 
 
 	boost::timer::cpu_timer queryTimer;
 
-	PGresult *result;
 	unsigned int stack_id = _config.getCatmaidRawStackId();
 	std::string blockQuery = PostgreSqlUtils::createBlockIdQuery(
 				_blockUtils, block, stack_id);
 
-	result = PQexec(_pgConnection, blockQuery.c_str());
-	PostgreSqlUtils::checkPostgreSqlError(result, blockQuery);
-	std::string blockId(PQgetvalue(result, 0, 0));
-	PQclear(result);
-
 	std::ostringstream q;
-	q << "INSERT INTO djsopnet_slice ";
-	q << "(stack_id, section, min_x, min_y, max_x, max_y, ctr_x, "
-	<< "ctr_y, value, size, id) VALUES";
+	q << "INSERT INTO djsopnet_slice "
+			"(stack_id, section, min_x, min_y, max_x, max_y, ctr_x, "
+			"ctr_y, value, size, id) VALUES";
 
 	std::ostringstream q2;
-	q2 << "INSERT INTO djsopnet_sliceblockrelation (block_id, slice_id) ";
-	q2 << "VALUES";
+	q2 << "WITH b AS (" << blockQuery << ") "
+			"INSERT INTO djsopnet_sliceblockrelation (block_id, slice_id) "
+			"VALUES";
 
 	char separator = ' ';
 	foreach (boost::shared_ptr<Slice> slice, slices)
@@ -83,35 +78,25 @@ PostgreSqlSliceStore::associateSlicesToBlock(const Slices& slices, const Block& 
 		q << slice->getComponent()->getSize() << ",";
 		q << hash << ")";
 
-		q2 << separator << "(" << blockId << "," << hash << ")";
+		q2 << separator << "((SELECT id FROM b)," << hash << ")";
 
 		separator = ',';
 	}
 
-	std::string query = q.str();
-	result = PQexec(_pgConnection, query.c_str());
-	PostgreSqlUtils::checkPostgreSqlError(result, query);
-	PQclear(result);
+	q << ';' << q2.str() << ';';
 
-	std::string query2 = q2.str();
-	result = PQexec(_pgConnection, query2.c_str());
-	PostgreSqlUtils::checkPostgreSqlError(result, query2);
+	if (doneWithBlock)
+		q << "UPDATE djsopnet_block SET slices_flag = TRUE WHERE id = (" << blockQuery << ")";
+
+	std::string query = q.str();
+	PGresult *result = PQexec(_pgConnection, query.c_str());
+	PostgreSqlUtils::checkPostgreSqlError(result, query);
 	PQclear(result);
 
 	boost::chrono::nanoseconds queryElapsed(queryTimer.elapsed().wall);
 	LOG_DEBUG(postgresqlslicestorelog) << "Stored " << slices.size() << " slices in "
 			<< (queryElapsed.count() / 1e6) << " ms (wall) ("
 			<< (1e9 * slices.size()/queryElapsed.count()) << " slices/s)" << std::endl;
-
-	if (doneWithBlock) {
-
-		std::string blockFlagQuery =
-				"UPDATE djsopnet_block SET slices_flag = TRUE WHERE id = (" + blockQuery + ")";
-		result = PQexec(_pgConnection, blockFlagQuery.c_str());
-
-		PostgreSqlUtils::checkPostgreSqlError(result, blockFlagQuery);
-		PQclear(result);
-	}
 }
 
 void
@@ -126,41 +111,47 @@ PostgreSqlSliceStore::associateConflictSetsToBlock(
 
 	boost::timer::cpu_timer queryTimer;
 
+	std::ostringstream idSets;
+	idSets << "(VALUES";
+	char separator = ' ';
+
 	// Find all conflicting slice pairs
 	foreach (const ConflictSet& conflictSet, conflictSets)
 	{
-		foreach (SliceHash id1, conflictSet.getSlices())
+		foreach (SliceHash hash1, conflictSet.getSlices())
 		{
-			foreach (SliceHash id2, conflictSet.getSlices())
+			foreach (SliceHash hash2, conflictSet.getSlices())
 			{
-				if (id1 < id2)
+				if (hash1 < hash2)
 				{
 					// Create proper string representation of hashes
-					std::string hash1 = boost::lexical_cast<std::string>(
-							PostgreSqlUtils::hashToPostgreSqlId(id1));
-					std::string hash2 = boost::lexical_cast<std::string>(
-							PostgreSqlUtils::hashToPostgreSqlId(id2));
+					std::string id1 = boost::lexical_cast<std::string>(
+							PostgreSqlUtils::hashToPostgreSqlId(hash1));
+					std::string id2 = boost::lexical_cast<std::string>(
+							PostgreSqlUtils::hashToPostgreSqlId(hash2));
 
 					// Insert conflicting pair
-					std::ostringstream q;
-					q << "INSERT INTO djsopnet_sliceconflictset ";
-					q << "(slice_a_id, slice_b_id) VALUES ";
-					q << "(" << hash1 << "," << hash2 << "); ";
-					q << "INSERT INTO djsopnet_blockconflictrelation ";
-					q << "(block_id, conflict_id) VALUES ";
-					q << "((" << blockQuery << "),";
-					q << "(SELECT id FROM djsopnet_sliceconflictset ";
-					q << "WHERE slice_a_id=" << hash1 << " AND ";
-					q << "slice_b_id=" << hash2 << "))";
-
-					std::string query = q.str();
-					PGresult *result = PQexec(_pgConnection, query.c_str());
-					PostgreSqlUtils::checkPostgreSqlError(result, query);
-					PQclear(result);
+					idSets << separator << '(' << id1 << ',' << id2 << ')';
+					separator = ',';
 				}
 			}
 		}
 	}
+
+	idSets << ')';
+	std::string idSetsStr = idSets.str();
+	std::ostringstream q;
+	q << "INSERT INTO djsopnet_sliceconflictset (slice_a_id,slice_b_id) "
+			"(SELECT DISTINCT * FROM " << idSetsStr << " AS h (a,b));";
+	q << "INSERT INTO djsopnet_blockconflictrelation (block_id,conflict_id) "
+			"(SELECT DISTINCT (" << blockQuery << "), c.id "
+			"FROM djsopnet_sliceconflictset c, " << idSetsStr << " AS h (a,b) "
+			"WHERE c.slice_a_id=h.a AND c.slice_b_id=h.b);";
+
+	std::string query = q.str();
+	PGresult *result = PQexec(_pgConnection, query.c_str());
+	PostgreSqlUtils::checkPostgreSqlError(result, query);
+	PQclear(result);
 
 	boost::chrono::nanoseconds queryElapsed(queryTimer.elapsed().wall);
 	LOG_DEBUG(postgresqlslicestorelog) << "Stored " << conflictSets.size() << " conflict sets in "
@@ -173,38 +164,16 @@ PostgreSqlSliceStore::getSlicesByBlocks(const Blocks& blocks, Blocks& missingBlo
 {
 	boost::shared_ptr<Slices> slices = boost::make_shared<Slices>();
 
-	if (blocks.empty()) {
-		return slices;
-	}
-
-	std::ostringstream blockIds;
-	PGresult* result;
+	if (blocks.empty()) return slices;
 
 	boost::timer::cpu_timer queryTimer;
 
 	// Check if any requested block do not have slices flagged.
-	foreach (const Block& block, blocks) {
-		const std::string blockQuery = PostgreSqlUtils::createBlockIdQuery(
-				_blockUtils, block, _config.getCatmaidRawStackId());
-		std::string blockFlagQuery = "SELECT id, slices_flag FROM djsopnet_block "
-				"WHERE id = (" + blockQuery + ")";
-		result = PQexec(_pgConnection, blockFlagQuery.c_str());
-
-		PostgreSqlUtils::checkPostgreSqlError(result, blockFlagQuery);
-
-		if (0 != strcmp(PQgetvalue(result, 0, 1), "t")) {
-			missingBlocks.add(block);
-		}
-
-		blockIds << PQgetvalue(result, 0, 0) << ",";
-
-		PQclear(result);
-	}
+	std::string blockIdsStr = PostgreSqlUtils::checkBlocksFlags(
+			_blockUtils, blocks, _config.getCatmaidRawStackId(),
+			"slices_flag", missingBlocks, _pgConnection);
 
 	if (!missingBlocks.empty()) return slices;
-
-	std::string blockIdsStr = blockIds.str();
-	blockIdsStr.erase(blockIdsStr.length() - 1); // Remove trailing comma.
 
 	// Query slices for this set of blocks
 	std::string blockSlicesQuery =
@@ -213,7 +182,7 @@ PostgreSqlSliceStore::getSlicesByBlocks(const Blocks& blocks, Blocks& missingBlo
 			"JOIN djsopnet_slice s on sbr.slice_id = s.id "
 			"WHERE sbr.block_id IN (" + blockIdsStr + ")";
 	enum { FIELD_ID, FIELD_SECTION };
-	result = PQexec(_pgConnection, blockSlicesQuery.c_str());
+	PGresult* result = PQexec(_pgConnection, blockSlicesQuery.c_str());
 
 	PostgreSqlUtils::checkPostgreSqlError(result, blockSlicesQuery);
 	int nSlices = PQntuples(result);
@@ -263,39 +232,16 @@ PostgreSqlSliceStore::getConflictSetsByBlocks(
 
 	boost::shared_ptr<ConflictSets> conflictSets = boost::make_shared<ConflictSets>();
 
-	if (blocks.empty()) {
-		return conflictSets;
-	}
-
-	std::ostringstream blockIds;
-	PGresult* result;
+	if (blocks.empty()) return conflictSets;
 
 	boost::timer::cpu_timer queryTimer;
 
 	// Check if any requested block do not have slices flagged.
-	// TODO: should conflict sets have own flag?
-	foreach (const Block& block, blocks) {
-		const std::string blockQuery = PostgreSqlUtils::createBlockIdQuery(
-				_blockUtils, block, _config.getCatmaidRawStackId());
-		std::string blockFlagQuery = "SELECT id, slices_flag FROM djsopnet_block "
-				"WHERE id = (" + blockQuery + ")";
-		result = PQexec(_pgConnection, blockFlagQuery.c_str());
-
-		PostgreSqlUtils::checkPostgreSqlError(result, blockFlagQuery);
-
-		if (0 != strcmp(PQgetvalue(result, 0, 1), "t")) {
-			missingBlocks.add(block);
-		}
-
-		blockIds << PQgetvalue(result, 0, 0) << ",";
-
-		PQclear(result);
-	}
+	std::string blockIdsStr = PostgreSqlUtils::checkBlocksFlags(
+			_blockUtils, blocks, _config.getCatmaidRawStackId(),
+			"slices_flag", missingBlocks, _pgConnection);
 
 	if (!missingBlocks.empty()) return conflictSets;
-
-	std::string blockIdsStr = blockIds.str();
-	blockIdsStr.erase(blockIdsStr.length() - 1); // Remove trailing comma.
 
 	// Query conflict sets for this set of blocks
 	std::string blockConflictsQuery =
@@ -304,7 +250,7 @@ PostgreSqlSliceStore::getConflictSetsByBlocks(
 			"JOIN djsopnet_blockconflictrelation bcr ON bcr.conflict_id = cs.id "
 			"WHERE bcr.block_id IN (" + blockIdsStr + ")";
 	enum { FIELD_SLICE_A_ID, FIELD_SLICE_B_ID };
-	result = PQexec(_pgConnection, blockConflictsQuery.c_str());
+	PGresult* result = PQexec(_pgConnection, blockConflictsQuery.c_str());
 
 	PostgreSqlUtils::checkPostgreSqlError(result, blockConflictsQuery);
 	int nConflicts = PQntuples(result);
