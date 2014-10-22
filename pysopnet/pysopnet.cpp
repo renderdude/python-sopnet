@@ -40,7 +40,7 @@ void translateGRBException(const GRBException& e) {
 #endif
 
 /**
- * Defines all the python classes in the module libpysopnet. Here we decide 
+ * Defines all the python classes in the module libpysopnet. Here we decide
  * which functions and data members we wish to expose.
  */
 BOOST_PYTHON_MODULE(libpysopnet) {
@@ -58,7 +58,8 @@ BOOST_PYTHON_MODULE(libpysopnet) {
 	boost::python::class_<util::point3<unsigned int> >("point3", boost::python::init<unsigned int, unsigned int, unsigned int>())
 			.def_readwrite("x", &util::point3<unsigned int>::x)
 			.def_readwrite("y", &util::point3<unsigned int>::y)
-			.def_readwrite("z", &util::point3<unsigned int>::z);
+			.def_readwrite("z", &util::point3<unsigned int>::z)
+			.def("__repr__", &util::point3<unsigned int>::to_string);
 
 	// SliceGuarantorParameters
 	boost::python::class_<SliceGuarantorParameters>("SliceGuarantorParameters")
