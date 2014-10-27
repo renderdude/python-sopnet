@@ -10,7 +10,7 @@
 logger::LogChannel postgresqlsegmentstorelog("postgresqlsegmentstorelog", "[PostgreSqlSegmentStore] ");
 
 PostgreSqlSegmentStore::PostgreSqlSegmentStore(
-		const ProjectConfiguration& config) : _config(config), _blockUtils(_config)
+		const ProjectConfiguration& config) : _config(config)
 {
 	_pgConnection = PostgreSqlUtils::getConnection(
 			_config.getPostgreSqlHost(),
@@ -32,7 +32,7 @@ PostgreSqlSegmentStore::associateSegmentsToBlock(
 
 	PGresult* queryResult;
 	const std::string blockQuery = PostgreSqlUtils::createBlockIdQuery(
-				_blockUtils, block, _config.getCatmaidRawStackId());
+				block, _config.getCatmaidRawStackId());
 
 	queryResult = PQexec(_pgConnection, blockQuery.c_str());
 	PostgreSqlUtils::checkPostgreSqlError(queryResult, blockQuery);
@@ -149,7 +149,7 @@ PostgreSqlSegmentStore::getSegmentsByBlocks(
 
 	// Check if any requested block do not have slices flagged.
 	std::string blockIdsStr = PostgreSqlUtils::checkBlocksFlags(
-			_blockUtils, blocks, _config.getCatmaidRawStackId(),
+			blocks, _config.getCatmaidRawStackId(),
 			"segments_flag", missingBlocks, _pgConnection);
 
 	if (!missingBlocks.empty()) return segmentDescriptions;
@@ -274,7 +274,7 @@ PostgreSqlSegmentStore::getConstraintsByBlocks(
 	boost::timer::cpu_timer queryTimer;
 
 	const std::string blocksQuery = PostgreSqlUtils::createBlockIdQuery(
-			_blockUtils, blocks, _config.getCatmaidRawStackId());
+			blocks, _config.getCatmaidRawStackId());
 
 	// Query constraints for this set of blocks
 	std::string blockConstraintsQuery =
@@ -319,6 +319,39 @@ PostgreSqlSegmentStore::getConstraintsByBlocks(
 	return constraints;
 }
 
+std::vector<double>
+PostgreSqlSegmentStore::getFeatureWeights() {
+
+	std::string query =
+			"SELECT weights FROM djsopnet_featureinfo WHERE stack_id="
+			+ boost::lexical_cast<std::string>(_config.getCatmaidRawStackId());
+	PGresult* queryResult = PQexec(_pgConnection, query.c_str());
+	PostgreSqlUtils::checkPostgreSqlError(queryResult, query);
+
+	int nRows = PQntuples(queryResult);
+	if (!nRows) {
+		std::string errorMsg = "No feature weights found for stack.";
+		LOG_ERROR(postgresqlsegmentstorelog) << errorMsg << std::endl;
+		UTIL_THROW_EXCEPTION(PostgreSqlException, errorMsg);
+	}
+
+	char* cellStr = PQgetvalue(queryResult, 0, 0);
+	std::string weightsString(cellStr);
+	weightsString = weightsString.substr(1, weightsString.length() - 2); // Remove { and }
+	boost::char_separator<char> separator("{}()\", \t");
+	boost::tokenizer<boost::char_separator<char> > weightsTokens(weightsString, separator);
+
+	std::vector<double> weights;
+
+	foreach (const std::string& weight, weightsTokens) {
+		weights.push_back(boost::lexical_cast<double>(weight));
+	}
+
+	PQclear(queryResult);
+
+	return weights;
+}
+
 void
 PostgreSqlSegmentStore::storeSolution(
 		const std::vector<SegmentHash>& segmentHashes,
@@ -327,27 +360,27 @@ PostgreSqlSegmentStore::storeSolution(
 	boost::timer::cpu_timer queryTimer;
 
 	const std::string coreQuery = PostgreSqlUtils::createCoreIdQuery(
-				_blockUtils, core, _config.getCatmaidRawStackId());
-
-	PGresult* queryResult = PQexec(_pgConnection, coreQuery.c_str());
-	PostgreSqlUtils::checkPostgreSqlError(queryResult, coreQuery);
-	std::string coreId(PQgetvalue(queryResult, 0, 0));
-	PQclear(queryResult);
+			core, _config.getCatmaidRawStackId());
 
 	std::ostringstream query;
-	query << "DELETE FROM djsopnet_segmentsolution WHERE core_id = " << coreId << ';';
-	query << "INSERT INTO djsopnet_segmentsolution (core_id, segment_id) VALUES";
+	query << "DELETE FROM djsopnet_segmentsolution WHERE core_id = (" << coreQuery << ");"
+			"WITH c AS (" << coreQuery << "), segments AS (VALUES ";
 	char separator = ' ';
 
 	foreach (const SegmentHash& segmentHash, segmentHashes) {
-		query << separator << '(' << coreId << ','
+		query << separator << '('
 			  << boost::lexical_cast<std::string>(PostgreSqlUtils::hashToPostgreSqlId(segmentHash))
 			  << ')';
 		separator = ',';
 	}
 
+	query << ") INSERT INTO djsopnet_segmentsolution (core_id, segment_id) "
+			"SELECT c.id, s.id FROM c, segments AS s (id);"
+			"UPDATE djsopnet_core SET solution_set_flag = TRUE "
+			"WHERE id = (" << coreQuery << ')';
+
 	std::string queryString(query.str());
-	queryResult = PQexec(_pgConnection, queryString.c_str());
+	PGresult* queryResult = PQexec(_pgConnection, queryString.c_str());
 
 	PostgreSqlUtils::checkPostgreSqlError(queryResult, queryString);
 	PQclear(queryResult);
@@ -362,7 +395,7 @@ bool
 PostgreSqlSegmentStore::getSegmentsFlag(const Block& block) {
 
 	const std::string blockQuery = PostgreSqlUtils::createBlockIdQuery(
-				_blockUtils, block, _config.getCatmaidRawStackId());
+				block, _config.getCatmaidRawStackId());
 	std::string blockFlagQuery = "SELECT segments_flag FROM djsopnet_block "
 			"WHERE id = (" + blockQuery + ")";
 	PGresult* queryResult = PQexec(_pgConnection, blockFlagQuery.c_str());

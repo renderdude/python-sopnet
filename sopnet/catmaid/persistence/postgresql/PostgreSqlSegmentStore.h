@@ -65,6 +65,11 @@ public:
 			const Blocks& blocks);
 
 	/**
+	 * Get weights for Segment features used computing problem cost.
+	 */
+	std::vector<double> getFeatureWeights();
+
+	/**
 	 * Store the solution of processing a core.
 	 *
 	 * @param segmentHashes
@@ -86,9 +91,6 @@ public:
 private:
 	// general configuration
 	const ProjectConfiguration& _config;
-
-	// a block utils instance is needed to get bounding boxes of blocks
-	const BlockUtils _blockUtils;
 
 	// database connection
 	PGconn* _pgConnection;
